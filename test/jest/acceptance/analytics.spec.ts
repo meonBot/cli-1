@@ -4,7 +4,6 @@ import {
   createProjectFromWorkspace,
 } from '../util/createProject';
 import { runSnykCLI } from '../util/runSnykCLI';
-import { isCLIV2 } from '../util/isCLIV2';
 
 jest.setTimeout(1000 * 30);
 
@@ -48,12 +47,14 @@ describe('analytics module', () => {
 
     expect(code).toBe(0);
 
-    if (isCLIV2()) {
-      // in this case an extra analytics event is being sent, which needs to be dropped
-      server.popRequest();
-    }
+    const requests = server.getRequests().filter((value) => {
+      return value.url == '/api/v1/analytics/cli';
+    });
 
-    const lastRequest = server.popRequest();
+    // in this case an extra analytics event is being sent, which needs to be dropped
+    requests.pop();
+
+    const lastRequest = requests.pop();
 
     expect(lastRequest).toMatchObject({
       headers: {
@@ -86,17 +87,17 @@ describe('analytics module', () => {
           integrationVersion: '1.2.3',
           // prettier-ignore
           metrics: {
-            'network_time': {
-              type: 'timer',
-              values: expect.any(Array),
-              total: expect.any(Number),
-            },
-            'cpu_time': {
-              type: 'synthetic',
-              values: [expect.any(Number)],
-              total: expect.any(Number),
-            },
-          },
+                        'network_time': {
+                            type: 'timer',
+                            values: expect.any(Array),
+                            total: expect.any(Number),
+                        },
+                        'cpu_time': {
+                            type: 'synthetic',
+                            values: [expect.any(Number)],
+                            total: expect.any(Number),
+                        },
+                    },
           nodeVersion: expect.any(String),
           os: expect.any(String),
           standalone: expect.any(Boolean),
@@ -110,7 +111,7 @@ describe('analytics module', () => {
     const project = await createProjectFromFixture(
       'npm/with-vulnerable-lodash-dep',
     );
-    server.setDepGraphResponse(
+    server.setCustomResponse(
       await project.readJSON('test-dep-graph-result.json'),
     );
 
@@ -121,12 +122,14 @@ describe('analytics module', () => {
 
     expect(code).toBe(1);
 
-    if (isCLIV2()) {
-      // in this case an extra analytics event is being sent, which needs to be dropped
-      server.popRequest();
-    }
+    const requests = server.getRequests().filter((value) => {
+      return value.url == '/api/v1/analytics/cli';
+    });
 
-    const lastRequest = server.popRequest();
+    // in this case an extra analytics event is being sent, which needs to be dropped
+    requests.pop();
+
+    const lastRequest = requests.pop();
     expect(lastRequest).toMatchObject({
       headers: {
         host: 'localhost:12345',
@@ -168,17 +171,17 @@ describe('analytics module', () => {
           integrationVersion: '1.2.3',
           // prettier-ignore
           metrics: {
-            'network_time': {
-              type: 'timer',
-              values: expect.any(Array),
-              total: expect.any(Number),
-            },
-            'cpu_time': {
-              type: 'synthetic',
-              values: [expect.any(Number)],
-              total: expect.any(Number),
-            },
-          },
+                        'network_time': {
+                            type: 'timer',
+                            values: expect.any(Array),
+                            total: expect.any(Number),
+                        },
+                        'cpu_time': {
+                            type: 'synthetic',
+                            values: [expect.any(Number)],
+                            total: expect.any(Number),
+                        },
+                    },
           nodeVersion: expect.any(String),
           os: expect.any(String),
           standalone: expect.any(Boolean),
@@ -197,12 +200,14 @@ describe('analytics module', () => {
 
     expect(code).toBe(2);
 
-    if (isCLIV2()) {
-      // in this case an extra analytics event is being sent, which needs to be dropped
-      server.popRequest();
-    }
+    const requests = server.getRequests().filter((value) => {
+      return value.url == '/api/v1/analytics/cli';
+    });
 
-    const lastRequest = server.popRequest();
+    // in this case an extra analytics event is being sent, which needs to be dropped
+    requests.pop();
+
+    const lastRequest = requests.pop();
     expect(lastRequest).toMatchObject({
       headers: {
         host: 'localhost:12345',
@@ -233,17 +238,95 @@ describe('analytics module', () => {
           integrationVersion: '1.2.3',
           // prettier-ignore
           metrics: {
-            'network_time': {
-              type: 'timer',
-              values: expect.any(Array),
-              total: expect.any(Number),
+                        'network_time': {
+                            type: 'timer',
+                            values: expect.any(Array),
+                            total: expect.any(Number),
+                        },
+                        'cpu_time': {
+                            type: 'synthetic',
+                            values: [expect.any(Number)],
+                            total: expect.any(Number),
+                        },
+                    },
+          nodeVersion: expect.any(String),
+          os: expect.any(String),
+          standalone: expect.any(Boolean),
+          version: expect.stringMatching(/^(\d+\.){2}.*/),
+        },
+      },
+    });
+  });
+
+  it('sends correct analytics with error-details containing 403 error body', async () => {
+    server.setNextResponse({ error: 'Unauthorized' });
+    server.setNextStatusCode(403);
+
+    const project = await createProjectFromFixture(
+      'npm/with-vulnerable-lodash-dep',
+    );
+
+    const { code } = await runSnykCLI(
+      'test --org=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      {
+        cwd: project.path(),
+        env,
+      },
+    );
+
+    expect(code).toBe(2);
+
+    const requests = server.getRequests().filter((value) => {
+      return value.url.includes('/api/v1/analytics/cli');
+    });
+
+    // in this case an extra analytics event is being sent, which needs to be dropped
+    requests.pop();
+
+    const lastRequest = requests.pop();
+    expect(lastRequest).toMatchObject({
+      query: {},
+      body: {
+        data: {
+          args: [{}],
+          ci: expect.any(Boolean),
+          command: 'bad-command',
+          metadata: {
+            'generating-node-dependency-tree': {
+              lockFile: true,
+              targetFile: 'package-lock.json',
             },
-            'cpu_time': {
-              type: 'synthetic',
-              values: [expect.any(Number)],
-              total: expect.any(Number),
-            },
+            lockfileVersion: 2,
+            pluginName: 'snyk-nodejs-lockfile-parser',
+            packageManager: 'npm',
+            packageName: 'with-vulnerable-lodash-dep',
+            packageVersion: '1.2.3',
+            prePrunedPathsCount: 2,
+            'error-code': 403,
+            'error-message': expect.stringContaining(
+              'Authentication failed. Please check the API token on',
+            ),
+            'error-details': { error: 'Unauthorized' },
           },
+          durationMs: expect.any(Number),
+          id: expect.any(String),
+          integrationEnvironment: '',
+          integrationEnvironmentVersion: '',
+          integrationName: 'JENKINS',
+          integrationVersion: '1.2.3',
+          // prettier-ignore
+          metrics: {
+                        'network_time': {
+                            type: 'timer',
+                            values: expect.any(Array),
+                            total: expect.any(Number),
+                        },
+                        'cpu_time': {
+                            type: 'synthetic',
+                            values: [expect.any(Number)],
+                            total: expect.any(Number),
+                        },
+                    },
           nodeVersion: expect.any(String),
           os: expect.any(String),
           standalone: expect.any(Boolean),
@@ -262,12 +345,14 @@ describe('analytics module', () => {
 
     expect(code).toBe(0);
 
-    if (isCLIV2()) {
-      // in this case an extra analytics event is being sent, which needs to be dropped
-      server.popRequest();
-    }
+    const requests = server.getRequests().filter((value) => {
+      return value.url == '/api/v1/analytics/cli';
+    });
 
-    const lastRequest = server.popRequest();
+    // in this case an extra analytics event is being sent, which needs to be dropped
+    requests.pop();
+
+    const lastRequest = requests.pop();
     expect(lastRequest).toMatchObject({
       headers: {
         host: 'localhost:12345',
@@ -290,17 +375,17 @@ describe('analytics module', () => {
           integrationVersion: '1.2.3',
           // prettier-ignore
           metrics: {
-            'network_time': {
-              type: 'timer',
-              values: expect.any(Array),
-              total: expect.any(Number),
-            },
-            'cpu_time': {
-              type: 'synthetic',
-              values: [expect.any(Number)],
-              total: expect.any(Number),
-            },
-          },
+                        'network_time': {
+                            type: 'timer',
+                            values: expect.any(Array),
+                            total: expect.any(Number),
+                        },
+                        'cpu_time': {
+                            type: 'synthetic',
+                            values: [expect.any(Number)],
+                            total: expect.any(Number),
+                        },
+                    },
           nodeVersion: expect.any(String),
           os: expect.any(String),
           standalone: expect.any(Boolean),
@@ -370,7 +455,7 @@ describe('analytics module', () => {
     });
   });
 
-  it("won't send analytics if disable analytics is set", async () => {
+  it("won't send analytics if disable analytics is set via SNYK_DISABLE_ANALYTICS", async () => {
     const { code } = await runSnykCLI(`version`, {
       env: {
         ...env,
@@ -379,7 +464,87 @@ describe('analytics module', () => {
     });
     expect(code).toBe(0);
 
-    const lastRequest = server.popRequest();
+    const requests = server.getRequests().filter((value) => {
+      return value.url == '/api/v1/analytics/cli';
+    });
+
+    const lastRequest = requests.pop();
     expect(lastRequest).toBeUndefined();
+  });
+
+  it("won't send analytics if disable analytics is set via SNYK_CFG_DISABLE_ANALYTICS", async () => {
+    const { code } = await runSnykCLI(`version`, {
+      env: {
+        ...env,
+        SNYK_CFG_DISABLE_ANALYTICS: '1',
+      },
+    });
+    expect(code).toBe(0);
+
+    const requests = server.getRequests().filter((value) => {
+      return value.url == '/api/v1/analytics/cli';
+    });
+
+    const lastRequest = requests.pop();
+    expect(lastRequest).toBeUndefined();
+  });
+
+  it("won't send analytics if disable analytics is set via config and disable-analytics", async () => {
+    const envWithDisabledAnalytics = {
+      ...env,
+      SNYK_DISABLE_ANALYTICS: '1',
+    };
+
+    // set config
+    await runSnykCLI(`config set disable-analytics=1`, {
+      env: envWithDisabledAnalytics,
+    });
+
+    const { code } = await runSnykCLI(`version`, {
+      env: env,
+    });
+
+    // unset config
+    await runSnykCLI(`config unset disable-analytics`, {
+      env: envWithDisabledAnalytics,
+    });
+
+    expect(code).toBe(0);
+
+    const requests = server.getRequests().filter((value) => {
+      return value.url == '/api/v1/analytics/cli';
+    });
+
+    const lastRequest = requests.pop();
+    expect(lastRequest).toBeUndefined();
+  });
+
+  it("won't send analytics if disable analytics is set via --DISABLE_ANALYTICS", async () => {
+    const { code } = await runSnykCLI(`version -d --DISABLE_ANALYTICS`, {
+      env: env,
+    });
+    expect(code).toBe(0);
+
+    const requests = server.getRequests().filter((value) => {
+      return value.url == '/api/v1/analytics/cli';
+    });
+
+    expect(requests.length).toBe(0);
+  });
+
+  it('if analytics are disabled with --DISABLE_ANALYTICS, SNYK_DISABLE_ANALYTICS will be set to 1', async () => {
+    // Using woof --language=cat prints currently set environment variables.
+    // --env will print the environment variable's value.
+    const { code, stdout } = await runSnykCLI(
+      `woof --language=cat --env=SNYK_DISABLE_ANALYTICS --DISABLE_ANALYTICS`,
+      {
+        env: {
+          ...env,
+        },
+      },
+    );
+
+    expect(code).toBe(0);
+    expect(stdout).toContain('SNYK_DISABLE_ANALYTICS=1');
   });
 });
